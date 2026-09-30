@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#111827">
+  <meta name="description" content="Tornado Go BRRR! — game tornado pixel-art hỗn loạn, vui nhộn và không máu me.">
+  <title>Tornado Go BRRR!</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='5' fill='%23111827'/%3E%3Cpath d='M5 7h22v4H9v4h15v4H12v4h8v4h-6v-4h-3v-4H8v-4H6v-4H5z' fill='%237dd3fc'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <main class="game-shell" aria-label="Tornado Go BRRR">
+    <header class="topbar">
+      <div class="brand-lockup">
+        <div class="mini-vortex" aria-hidden="true"><i></i><i></i><i></i></div>
+        <div><h1>TORNADO GO <span>BRRR!</span></h1><p>PILOT BUILD · WINDY CREEK</p></div>
+      </div>
+      <div class="save-chip"><span></span> CHECKPOINT <b id="checkpointLabel">CHƯA CÓ</b></div>
+    </header>
+
+    <section class="hud" id="hud" aria-live="polite">
+      <div class="rank-card"><span>CƯỜNG ĐỘ</span><strong id="fRank">F0</strong><small id="rankName">Gió lăn tăn</small></div>
+      <div class="energy-card">
+        <div class="meter-label"><span>NĂNG LƯỢNG</span><b id="energyText">0%</b></div>
+        <div class="meter"><i id="energyBar"></i><em></em><em></em><em></em><em></em></div>
+      </div>
+      <div class="stat-card"><span>ĐIỂM</span><strong id="scoreText">000000</strong><small>COMBO <b id="comboText">x1</b></small></div>
+      <div class="timer-card"><span>THỜI GIAN</span><strong id="timerText">03:00</strong><small id="weatherText">☀ TRỜI QUANG</small></div>
+    </section>
+
+    <section class="play-grid">
+      <div class="game-frame">
+        <canvas id="game" width="960" height="540" aria-label="Bản đồ game Windy Creek"></canvas>
+        <div class="scanlines" aria-hidden="true"></div>
+
+        <div class="screen active" id="mapScreen">
+          <div class="world-panel">
+            <div class="eyebrow">CHỌN ĐIỂM ĐÁP</div>
+            <h2>WORLD CHAOS TOUR</h2>
+            <p class="world-copy">Mỗi khu vực có thời tiết, vật thể và kiểu tornado riêng.</p>
+            <div class="world-map" aria-label="Bản đồ thế giới">
+              <button class="region active-region" id="windyRegion"><span class="pin">★</span><b>WINDY CREEK</b><small>Tornado Alley · ĐÃ MỞ</small></button>
+              <button class="region locked r-japan" disabled><span>🔒</span><b>NEON BAY</b><small>Nhật Bản · 12,000 điểm</small></button>
+              <button class="region locked r-sahara" disabled><span>🔒</span><b>DUST KINGDOM</b><small>Sahara · Hoàn thành 5 nhiệm vụ</small></button>
+              <button class="region locked r-vietnam" disabled><span>🔒</span><b>MEKONG MAYHEM</b><small>Việt Nam · Sắp có</small></button>
+              <div class="continent c1"></div><div class="continent c2"></div><div class="continent c3"></div><div class="continent c4"></div><div class="continent c5"></div>
+            </div>
+            <div class="loadout">
+              <div><span>TORNADO</span><b>CLASSIC FUNNEL</b><small>Cân bằng · F0 → F3</small></div>
+              <div class="weather-icons"><span>THỜI TIẾT</span><b>☀ ☁ ⚡</b><small>Thay đổi trong màn</small></div>
+              <button class="primary" id="startBtn">VÀO WINDY CREEK</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="screen" id="chargeScreen">
+          <div class="charge-panel">
+            <div class="charge-kicker">5 GIÂY KHỞI ĐỘNG</div>
+            <div class="charge-count" id="chargeCount">5</div>
+            <h2>NẠP NĂNG LƯỢNG!</h2>
+            <p>Nhấn càng nhanh, tornado xuất phát càng mạnh.</p>
+            <button class="generate" id="generateBtn"><span>⚡</span> GENERATE! <small>NHẤN LIÊN TỤC</small></button>
+            <div class="charge-meter"><i id="chargeBar"></i></div>
+            <button class="mic-btn" id="micBtn">🎙 BẬT MIC (TÙY CHỌN)</button>
+            <small class="privacy">Âm thanh chỉ được đo độ lớn và không được lưu.</small>
+          </div>
+        </div>
+
+        <div class="screen" id="resultScreen">
+          <div class="result-card">
+            <div class="eyebrow">CHECKPOINT ĐÃ LƯU</div>
+            <h2 id="resultTitle">CƠN GIÓ CÓ TIỀM NĂNG!</h2>
+            <div class="result-score"><span>TỔNG ĐIỂM</span><b id="resultScore">0</b></div>
+            <div class="result-stats" id="resultStats"></div>
+            <div class="result-actions"><button class="secondary" id="mapBtn">BẢN ĐỒ</button><button class="primary" id="retryBtn">CHƠI LẠI</button></div>
+          </div>
+        </div>
+
+        <div class="toast" id="toast"></div>
+        <div class="control-hint" id="controlHint"><b>WASD</b> DI CHUYỂN <span>•</span> <b>CHUỘT</b> DẪN HƯỚNG</div>
+      </div>
+
+      <aside class="mission-panel">
+        <div class="panel-title"><span>NHIỆM VỤ</span><b id="missionCount">0/3</b></div>
+        <div id="missions" class="missions"></div>
+        <div class="tip-box"><b>RADIO WINDY</b><p id="radioText">“Thời tiết hôm nay hoàn toàn bình thường...”</p></div>
+        <div class="unlock-box"><span>MỞ KHÓA TIẾP THEO</span><b>🌪 MULTI-VORTEX</b><div><i id="unlockBar"></i></div><small id="unlockText">0 / 12,000 điểm</small></div>
+      </aside>
+    </section>
+
+    <footer>
+      <div><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd><span>hoặc giữ chuột để di chuyển</span></div>
+      <button id="soundBtn" aria-pressed="true">🔊 ÂM THANH: BẬT</button>
+    </footer>
+  </main>
+  <script src="./game.js"></script>
+</body>
+</html>
