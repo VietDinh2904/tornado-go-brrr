@@ -1,148 +1,97 @@
 (() => {
   'use strict';
-  const $ = (id) => document.getElementById(id);
-  const canvas = $('game');
-  const ctx = canvas.getContext('2d');
-  ctx.imageSmoothingEnabled = false;
+  const $ = id => document.getElementById(id);
+  const canvas = $('game'), ctx = canvas.getContext('2d');
+  const radar = $('radar'), rctx = radar.getContext('2d');
+  ctx.imageSmoothingEnabled = false; rctx.imageSmoothingEnabled = false;
+  const W = canvas.width, H = canvas.height, WORLD_W = 2400, WORLD_H = 1800, TILE = 100;
+  const screens = { map:$('mapScreen'), charge:$('chargeScreen'), result:$('resultScreen') };
+  const ui = { fRank:$('fRank'),rankName:$('rankName'),energyText:$('energyText'),energyBar:$('energyBar'),score:$('scoreText'),combo:$('comboText'),timer:$('timerText'),weather:$('weatherText'),missions:$('missions'),missionCount:$('missionCount'),toast:$('toast'),radio:$('radioText'),checkpoint:$('checkpointLabel'),unlockBar:$('unlockBar'),unlockText:$('unlockText'),hint:$('controlHint'),biomeChip:$('biomeChip'),biomeName:$('biomeName'),radarWrap:$('radarWrap') };
+  const saveKey='tornadoGoBrrrPilotV2', saved=JSON.parse(localStorage.getItem(saveKey)||'{}');
+  let audioOn=true,audioCtx,micStream,analyser,micData,state='map',last=performance.now(),chargeEnds=0,chargeEnergy=0,runEnds=0;
+  let score=0,combo=1,comboTime=0,peopleCaught=0,carsCaught=0,structuresHit=0,missionsDone=0;
+  let objects=[],particles=[],bubbles=[],roads=[],keys={},mouse={x:W/2,y:H/2,down:false},navTarget=null;
+  let weather='clear',weatherClock=0,lightningClock=8,currentBiome='';
+  let tornado={x:1200,y:820,vx:0,vy:0,energy:0,radius:34,rank:0},camera={x:1200,y:820,zoom:.82};
+  const ranks=[{name:'Gió lăn tăn',color:'#79d7ef'},{name:'Quậy khu phố',color:'#5de0c6'},{name:'Bay mái nhà',color:'#ffd447'},{name:'Đại náo đô thị',color:'#ff7849'}];
+  const shouts=['HELP!','AAAAAAAA!','NOT AGAIN!','MY CAR!','I JUST FIXED THAT!','FREE FLIGHT!','SAVE THE PIZZA!','WHY IS THERE A COW?!','MẸ ƠI!','TUI ĐANG BAY!','TÔI ĐI LÀM TRỄ!','AI GỌI TAXI BAY?!'];
+  const radios=['“Stormhaven vẫn đang... tương đối ổn.”','“Một chiếc taxi vừa xin phép hạ cánh.”','“Ai thấy con bò số 47 xin gọi đài.”','“Giao thông trên trời hiện khá đông.”','“Đây chắc chắn chỉ là một đám mây thấp.”'];
+  const biomeInfo={water:{name:'BỜ SÔNG',color:'#3a9ac4'},downtown:{name:'TRUNG TÂM',color:'#c2c7c4'},suburb:{name:'KHU DÂN CƯ',color:'#7fb56c'},industry:{name:'KHU CÔNG NGHIỆP',color:'#8f877b'},park:{name:'CÔNG VIÊN',color:'#4f9b63'},farm:{name:'NÔNG TRẠI',color:'#b6a85f'}};
+  const missionDefs=[{id:'people',icon:'🙋',name:'Giờ cao điểm',desc:'Hút 12 cư dân',goal:12,get:()=>peopleCaught},{id:'cars',icon:'🚕',name:'Taxi trên trời',desc:'Hút 6 phương tiện',goal:6,get:()=>carsCaught},{id:'score',icon:'⭐',name:'Quậy có nghề',desc:'Đạt 3,500 điểm',goal:3500,get:()=>score}];
 
-  const W = canvas.width, H = canvas.height;
-  const screens = { map: $('mapScreen'), charge: $('chargeScreen'), result: $('resultScreen') };
-  const ui = {
-    fRank:$('fRank'), rankName:$('rankName'), energyText:$('energyText'), energyBar:$('energyBar'), score:$('scoreText'), combo:$('comboText'), timer:$('timerText'), weather:$('weatherText'), missions:$('missions'), missionCount:$('missionCount'), toast:$('toast'), radio:$('radioText'), checkpoint:$('checkpointLabel'), unlockBar:$('unlockBar'), unlockText:$('unlockText'), hint:$('controlHint')
-  };
-  const saveKey = 'tornadoGoBrrrPilotV1';
-  const saved = JSON.parse(localStorage.getItem(saveKey) || '{}');
-  let audioOn = true, audioCtx, micStream, analyser, micData;
-  let state = 'map', last = performance.now(), chargeEnds = 0, chargeEnergy = 0, runEnds = 0;
-  let score = 0, combo = 1, comboTime = 0, peopleCaught = 0, carsCaught = 0, structuresHit = 0, missionsDone = 0;
-  let objects = [], particles = [], bubbles = [], keys = {}, mouse = {x:W/2,y:H/2,down:false};
-  let weather = 'clear', weatherClock = 0, lightningClock = 8;
-  let tornado = {x:W/2,y:H/2,vx:0,vy:0,energy:0,radius:28,rank:0};
-  const ranks = [
-    {name:'Gió lăn tăn',min:0,color:'#79d7ef'}, {name:'Quậy khu phố',min:28,color:'#5de0c6'},
-    {name:'Bay mái nhà',min:52,color:'#ffd447'}, {name:'Đại náo thị trấn',min:78,color:'#ff7849'}
-  ];
-  const shouts = ['HELP!','AAAAAAAA!','NOT AGAIN!','MY CAR!','I JUST FIXED THAT!','FREE FLIGHT!','SAVE THE PIZZA!','WHY IS THERE A COW?!','MẸ ƠI!','TUI ĐANG BAY!'];
-  const radios = ['“Thời tiết hôm nay hoàn toàn bình thường...”','“Có một cái mái nhà vừa bay ngang studio.”','“Ai thấy con bò số 47 xin gọi đài.”','“Windy Creek: gió nhẹ, đồ đạc bay nhiều.”','“Đừng lo, đây chắc chắn chỉ là... mây.”'];
-  const missionDefs = [
-    {id:'people',icon:'🙋',name:'Chuyến bay miễn phí',desc:'Hút 8 người dân',goal:8,get:()=>peopleCaught},
-    {id:'cars',icon:'🚗',name:'Bãi xe trên trời',desc:'Hút 4 chiếc xe',goal:4,get:()=>carsCaught},
-    {id:'score',icon:'⭐',name:'Quậy có nghề',desc:'Đạt 4,000 điểm',goal:4000,get:()=>score},
-  ];
-
-  function showScreen(name){ Object.values(screens).forEach(x=>x.classList.remove('active')); if(name) screens[name].classList.add('active'); }
-  function tone(freq=220,dur=.08,type='square',vol=.04){
-    if(!audioOn) return; audioCtx ||= new (window.AudioContext||window.webkitAudioContext)();
-    const o=audioCtx.createOscillator(),g=audioCtx.createGain();o.type=type;o.frequency.value=freq;g.gain.setValueAtTime(vol,audioCtx.currentTime);g.gain.exponentialRampToValueAtTime(.001,audioCtx.currentTime+dur);o.connect(g).connect(audioCtx.destination);o.start();o.stop(audioCtx.currentTime+dur);
-  }
-  function toast(text){ ui.toast.textContent=text;ui.toast.classList.add('show');clearTimeout(toast.t);toast.t=setTimeout(()=>ui.toast.classList.remove('show'),1400); }
-  function updateSaveLabel(){ ui.checkpoint.textContent = saved.best ? `${saved.best.toLocaleString('vi-VN')} ĐIỂM` : 'CHƯA CÓ'; const total=Math.min(12000,saved.total||0);ui.unlockBar.style.width=`${total/120}%`;ui.unlockText.textContent=`${total.toLocaleString('vi-VN')} / 12,000 điểm`; }
+  const showScreen=name=>{Object.values(screens).forEach(x=>x.classList.remove('active'));if(name)screens[name].classList.add('active');};
+  const showGameUi=on=>{ui.biomeChip.style.display=on?'flex':'none';ui.radarWrap.style.display=on?'block':'none';};
+  function tone(freq=220,dur=.08,type='square',vol=.035){if(!audioOn)return;audioCtx||=new(window.AudioContext||window.webkitAudioContext)();const o=audioCtx.createOscillator(),g=audioCtx.createGain();o.type=type;o.frequency.value=freq;g.gain.setValueAtTime(vol,audioCtx.currentTime);g.gain.exponentialRampToValueAtTime(.001,audioCtx.currentTime+dur);o.connect(g).connect(audioCtx.destination);o.start();o.stop(audioCtx.currentTime+dur);}
+  function toast(text){ui.toast.textContent=text;ui.toast.classList.add('show');clearTimeout(toast.t);toast.t=setTimeout(()=>ui.toast.classList.remove('show'),1400);}
+  function updateSaveLabel(){const best=saved.best||0;ui.checkpoint.textContent=best?`${best.toLocaleString('vi-VN')} ĐIỂM`:'CHƯA CÓ';const total=Math.min(12000,saved.total||0);ui.unlockBar.style.width=`${total/120}%`;ui.unlockText.textContent=`${total.toLocaleString('vi-VN')} / 12,000 điểm`;}
   updateSaveLabel();
+  const project=(x,y,z=0)=>({x:(x-y)*.5,y:(x+y)*.25-z});
+  function toScreen(x,y,z=0){const p=project(x,y,z),c=project(camera.x,camera.y);return{x:W/2+(p.x-c.x)*camera.zoom,y:H/2+(p.y-c.y)*camera.zoom};}
+  function toWorld(sx,sy){const c=project(camera.x,camera.y),px=(sx-W/2)/camera.zoom+c.x,py=(sy-H/2)/camera.zoom+c.y;return{x:px+2*py,y:2*py-px};}
+  function poly(points,fill,stroke){ctx.beginPath();points.forEach((p,i)=>i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y));ctx.closePath();ctx.fillStyle=fill;ctx.fill();if(stroke){ctx.strokeStyle=stroke;ctx.lineWidth=Math.max(1,camera.zoom);ctx.stroke();}}
+  const worldQuad=(x,y,w,d,color,stroke)=>poly([toScreen(x,y),toScreen(x+w,y),toScreen(x+w,y+d),toScreen(x,y+d)],color,stroke);
+  function terrainAt(x,y){if(y<250)return'water';if(x>1650&&y<1050)return'industry';if(x>1550&&y>1050)return'park';if(y>1250)return'farm';if(x>720&&x<1620&&y>360&&y<1210)return'downtown';return'suburb';}
+  const biomeAt=(x,y)=>biomeInfo[terrainAt(x,y)];
 
-  function beginCharge(){
-    state='charge';showScreen('charge');chargeEnergy=8;chargeEnds=performance.now()+5000;$('chargeBar').style.width='8%';$('chargeCount').textContent='5';tone(260,.12);
-  }
-  function addCharge(amount=2.2){
-    if(state!=='charge') return;chargeEnergy=Math.min(100,chargeEnergy+amount);$('chargeBar').style.width=`${chargeEnergy}%`;tone(180+chargeEnergy*4,.035,'square',.025);
-    $('generateBtn').animate([{transform:'scale(1)'},{transform:'scale(.96)'},{transform:'scale(1)'}],{duration:90});
-  }
-  async function enableMic(){
-    try{ micStream=await navigator.mediaDevices.getUserMedia({audio:true});audioCtx||=new (window.AudioContext||window.webkitAudioContext)();analyser=audioCtx.createAnalyser();analyser.fftSize=256;micData=new Uint8Array(analyser.frequencyBinCount);audioCtx.createMediaStreamSource(micStream).connect(analyser);$('micBtn').textContent='🎙 MIC ĐANG NGHE';toast('Mic đã bật — cứ hét thoải mái!'); }
-    catch(e){ toast('Không mở được mic — dùng nút GENERATE nhé!'); }
-  }
-  function initMissions(){
-    missionDefs.forEach(m=>m.done=false);missionsDone=0;ui.missions.innerHTML=missionDefs.map(m=>`<div class="mission" id="m-${m.id}"><div class="mission-icon">${m.icon}</div><div><b>${m.name}</b><small>${m.desc}</small><div class="progress"><i></i></div></div></div>`).join('');ui.missionCount.textContent='0/3';
-  }
+  function beginCharge(){state='charge';showGameUi(false);showScreen('charge');chargeEnergy=12;chargeEnds=performance.now()+5000;$('chargeBar').style.width='12%';$('chargeCount').textContent='5';tone(260,.12);}
+  function addCharge(amount=2.4){if(state!=='charge')return;chargeEnergy=Math.min(100,chargeEnergy+amount);$('chargeBar').style.width=`${chargeEnergy}%`;tone(180+chargeEnergy*4,.035,'square',.022);$('generateBtn').animate([{transform:'scale(1)'},{transform:'scale(.96)'},{transform:'scale(1)'}],{duration:90});}
+  async function enableMic(){try{micStream=await navigator.mediaDevices.getUserMedia({audio:true});audioCtx||=new(window.AudioContext||window.webkitAudioContext)();analyser=audioCtx.createAnalyser();analyser.fftSize=256;micData=new Uint8Array(analyser.frequencyBinCount);audioCtx.createMediaStreamSource(micStream).connect(analyser);$('micBtn').textContent='🎙 MIC ĐANG NGHE';toast('Mic đã bật — cứ hét thoải mái!');}catch(e){toast('Không mở được mic — dùng GENERATE nhé!');}}
+  function initMissions(){missionDefs.forEach(m=>m.done=false);missionsDone=0;ui.missions.innerHTML=missionDefs.map(m=>`<div class="mission" id="m-${m.id}"><div class="mission-icon">${m.icon}</div><div><b>${m.name}</b><small>${m.desc}</small><div class="progress"><i></i></div></div></div>`).join('');ui.missionCount.textContent='0/3';}
+  const add=(type,x,y,extra={})=>objects.push({type,x,y,vx:0,vy:0,spin:0,caught:false,...extra});
+  const addBuilding=(kind,x,y,w,d,h,color)=>add('building',x,y,{kind,w,d,h,hp:h*.9,color});
+  function seedRoads(){roads=[];[420,700,980,1260,1540,1820,2100].forEach(x=>roads.push({x:x-36,y:220,w:72,d:1540}));[390,650,910,1170,1430,1690].forEach(y=>roads.push({x:70,y:y-36,w:2260,d:72}));}
   function spawnWorld(){
-    objects=[];particles=[];bubbles=[];
-    const add=(type,x,y,extra={})=>objects.push({type,x,y,vx:0,vy:0,spin:0,caught:false,...extra});
-    for(let i=0;i<18;i++) add('house',80+(i%6)*155+Math.random()*25,75+Math.floor(i/6)*190+Math.random()*20,{hp:55+Math.random()*30,w:52,h:43,color:['#ef8354','#e0a458','#57a0a8','#d96868'][i%4]});
-    for(let i=0;i<34;i++) add('tree',30+Math.random()*900,28+Math.random()*480,{hp:18});
-    for(let i=0;i<25;i++) add('person',40+Math.random()*880,40+Math.random()*450,{dir:Math.random()*6.28,speed:8+Math.random()*13,color:['#ffd166','#ef476f','#86e1f7','#a7f070'][i%4]});
-    for(let i=0;i<12;i++) add('car',80+Math.random()*800,Math.random()>.5?267:301,{dir:Math.random()>.5?0:Math.PI,speed:24+Math.random()*15,color:['#ff5c5c','#ffd447','#59b8ff','#f4f4f4'][i%4]});
-    for(let i=0;i<5;i++) add('cow',100+Math.random()*760,50+Math.random()*420,{dir:Math.random()*6.28,speed:5});
-    objects.push({type:'storm',x:100+Math.random()*760,y:80+Math.random()*350,r:48,phase:0});
+    objects=[];particles=[];bubbles=[];seedRoads();const colors=['#e56f57','#e0a458','#62a4ad','#d27986','#8d7cc2','#65a56d'];let ci=0;
+    for(let x=780;x<1600;x+=135)for(let y=430;y<1180;y+=130){if((x+y)%5<1)continue;const kind=(x+y)%3<1?'tower':'apartment';addBuilding(kind,x+14,y+12,76,72,kind==='tower'?90+(ci%4)*28:58+(ci%3)*18,colors[ci++%colors.length]);}
+    for(let x=120;x<700;x+=145)for(let y=340;y<1190;y+=165)addBuilding(ci%4===0?'shop':'house',x,y,72,65,ci%4===0?34:26,colors[ci++%colors.length]);
+    for(let x=1700;x<2280;x+=185)for(let y=330;y<990;y+=190)addBuilding(ci%3===0?'warehouse':'factory',x,y,115,92,48+(ci%2)*22,['#8c8175','#6f8292','#a27b62'][ci++%3]);
+    for(let x=150;x<1450;x+=260)for(let y=1360;y<1760;y+=210){if(ci%2)addBuilding('barn',x,y,90,76,34,'#b35b45');ci++;}
+    for(let i=0;i<85;i++)add('person',760+Math.random()*820,380+Math.random()*790,{role:['commuter','tourist','vendor'][i%3],dir:Math.random()*6.28,speed:15+Math.random()*16,color:['#ffd166','#ef476f','#86e1f7','#a7f070','#c9a7ff'][i%5]});
+    for(let i=0;i<34;i++)add('person',100+Math.random()*570,300+Math.random()*900,{role:['resident','student','delivery'][i%3],dir:Math.random()*6.28,speed:11+Math.random()*12,color:['#ff9f68','#61d095','#69a7e8'][i%3]});
+    for(let i=0;i<24;i++){const x=1580+Math.random()*700,y=1080+Math.random()*600;add('person',x,y,{role:['jogger','dog-walker'][i%2],dir:Math.random()*6.28,speed:18+Math.random()*14,color:['#ff7f91','#70d6ff'][i%2]});if(i%4===0)add('dog',x+12,y+8,{dir:Math.random()*6.28,speed:17,color:'#c99255'});}
+    for(let i=0;i<18;i++){const x=180+Math.random()*1250,y=1280+Math.random()*450;add('person',x,y,{role:'farmer',dir:Math.random()*6.28,speed:9,color:'#f1b45b'});if(i%3===0)add('cow',x+25,y+15,{dir:Math.random()*6.28,speed:5,color:i%2?'#f2eee3':'#b98c63'});}
+    const roadXs=[420,700,980,1260,1540,1820,2100],roadYs=[390,650,910,1170,1430,1690],kinds=['taxi','sedan','bus','truck','ambulance','van'];
+    for(let i=0;i<52;i++){const vertical=i%2===0,kind=kinds[i%kinds.length];let x,y,dir;if(vertical){x=roadXs[i%roadXs.length];y=260+Math.random()*1420;dir=Math.random()>.5?Math.PI/2:-Math.PI/2;}else{x=80+Math.random()*2200;y=roadYs[i%roadYs.length];dir=Math.random()>.5?0:Math.PI;}add('vehicle',x,y,{kind,dir,speed:kind==='bus'?25:32+Math.random()*18,color:kind==='taxi'?'#f5cf4b':kind==='ambulance'?'#edf3f5':colors[i%colors.length]});}
+    for(let i=0;i<55;i++){const x=Math.random()*WORLD_W,y=270+Math.random()*(WORLD_H-300),t=terrainAt(x,y);if(t==='downtown'||t==='industry')continue;add('tree',x,y,{kind:t==='farm'?'fruit':'oak',hp:18,color:i%3?'#397d50':'#4e9661'});}
+    for(let i=0;i<4;i++)add('storm',350+Math.random()*1750,350+Math.random()*1200,{r:95,phase:Math.random()*8});
   }
-  function startRun(){
-    state='play';showScreen();score=0;combo=1;comboTime=0;peopleCaught=0;carsCaught=0;structuresHit=0;weather='clear';weatherClock=0;lightningClock=8;tornado={x:W/2,y:H/2,vx:0,vy:0,energy:Math.max(12,chargeEnergy),radius:28,rank:0};runEnds=performance.now()+180000;spawnWorld();initMissions();ui.hint.style.display='block';setTimeout(()=>ui.hint.style.display='none',4500);toast('WINDY CREEK — GO BRRR!');tone(110,.35,'sawtooth',.06);
-  }
-  function finishRun(){
-    if(state!=='play')return;state='result';showScreen('result');ui.hint.style.display='none';const bonus=missionsDone*750;score+=bonus;saved.best=Math.max(saved.best||0,score);saved.total=(saved.total||0)+score;saved.runs=(saved.runs||0)+1;saved.last={score,peopleCaught,carsCaught,missionsDone,date:Date.now()};localStorage.setItem(saveKey,JSON.stringify(saved));updateSaveLabel();$('resultScore').textContent=score.toLocaleString('vi-VN');$('resultTitle').textContent=missionsDone===3?'THỊ TRẤN ĐÃ... BAY!':'CƠN GIÓ CÓ TIỀM NĂNG!';$('resultStats').innerHTML=`<div><b>${peopleCaught}</b><small>NGƯỜI BAY</small></div><div><b>${carsCaught}</b><small>XE BAY</small></div><div><b>${missionsDone}/3</b><small>NHIỆM VỤ</small></div>`;tone(440,.16);setTimeout(()=>tone(660,.22),160);
-  }
-  function addBubble(x,y,text){bubbles.push({x,y,text,life:1.4});}
-  function debris(x,y,color,count=5){for(let i=0;i<count;i++)particles.push({x,y,vx:(Math.random()-.5)*90,vy:(Math.random()-.5)*90,life:.8+Math.random(),color,size:3+Math.random()*5});}
-  function collect(o,points,label){
-    if(o.caught)return;o.caught=true;score+=Math.round(points*combo);combo=Math.min(8,combo+1);comboTime=2.1;tornado.energy=Math.min(100,tornado.energy+1.5);debris(o.x,o.y,o.color||'#d6e1ef',8);if(label)addBubble(o.x,o.y,label);tone(260+combo*38,.06);
-  }
+  function startRun(){state='play';showScreen();showGameUi(true);score=0;combo=1;comboTime=0;peopleCaught=0;carsCaught=0;structuresHit=0;weather='clear';weatherClock=0;lightningClock=8;navTarget=null;tornado={x:1180,y:820,vx:0,vy:0,energy:Math.max(28,chargeEnergy),radius:38,rank:0};camera={x:tornado.x,y:tornado.y,zoom:.82};runEnds=performance.now()+180000;spawnWorld();initMissions();ui.hint.style.display='block';setTimeout(()=>ui.hint.style.display='none',5200);toast('STORMHAVEN — GIỜ CAO ĐIỂM!');tone(110,.35,'sawtooth',.06);}
+  function finishRun(){if(state!=='play')return;state='result';showGameUi(false);showScreen('result');ui.hint.style.display='none';score+=missionsDone*750;saved.best=Math.max(saved.best||0,score);saved.total=(saved.total||0)+score;saved.runs=(saved.runs||0)+1;saved.last={score,peopleCaught,carsCaught,missionsDone,date:Date.now()};localStorage.setItem(saveKey,JSON.stringify(saved));updateSaveLabel();$('resultScore').textContent=score.toLocaleString('vi-VN');$('resultTitle').textContent=missionsDone===3?'STORMHAVEN ĐÃ... BAY!':'CƠN BÃO CÓ TIỀM NĂNG!';$('resultStats').innerHTML=`<div><b>${peopleCaught}</b><small>NGƯỜI BAY</small></div><div><b>${carsCaught}</b><small>XE BAY</small></div><div><b>${missionsDone}/3</b><small>NHIỆM VỤ</small></div>`;tone(440,.16);setTimeout(()=>tone(660,.22),160);}
+  const addBubble=(x,y,text)=>bubbles.push({x,y,text,life:1.5});
+  function debris(x,y,color,count=6){for(let i=0;i<count;i++)particles.push({x,y,z:10,vx:(Math.random()-.5)*120,vy:(Math.random()-.5)*120,vz:45+Math.random()*60,life:.8+Math.random(),color,size:3+Math.random()*6});}
+  function collect(o,points,label){if(o.caught)return;o.caught=true;score+=Math.round(points*combo);combo=Math.min(8,combo+1);comboTime=2.1;tornado.energy=Math.min(100,tornado.energy+1.7);debris(o.x,o.y,o.color||'#d6e1ef',8);if(label)addBubble(o.x,o.y,label);tone(260+combo*38,.06);}
+
   function update(dt,now){
-    if(state==='charge'){
-      const remain=Math.max(0,chargeEnds-now);$('chargeCount').textContent=Math.ceil(remain/1000);
-      if(analyser){analyser.getByteFrequencyData(micData);const avg=micData.reduce((a,b)=>a+b,0)/micData.length;if(avg>28)addCharge(Math.min(.9,avg/180));}
-      if(remain<=0)startRun();return;
-    }
-    if(state!=='play')return;
-    const timeLeft=Math.max(0,runEnds-now);if(timeLeft<=0||tornado.energy<=0){finishRun();return;}
-    let ax=0,ay=0;if(keys.KeyW||keys.ArrowUp)ay--;if(keys.KeyS||keys.ArrowDown)ay++;if(keys.KeyA||keys.ArrowLeft)ax--;if(keys.KeyD||keys.ArrowRight)ax++;
-    if(mouse.down){const dx=mouse.x-tornado.x,dy=mouse.y-tornado.y,d=Math.hypot(dx,dy)||1;ax+=dx/d;ay+=dy/d;}
-    const al=Math.hypot(ax,ay)||1,speed=82+14*tornado.rank;tornado.vx+=(ax/al*speed-tornado.vx)*Math.min(1,dt*4);tornado.vy+=(ay/al*speed-tornado.vy)*Math.min(1,dt*4);if(!ax&&!ay){tornado.vx*=.91;tornado.vy*=.91;}
-    tornado.x=Math.max(20,Math.min(W-20,tornado.x+tornado.vx*dt));tornado.y=Math.max(20,Math.min(H-20,tornado.y+tornado.vy*dt));
-    tornado.energy=Math.max(0,tornado.energy-dt*(.52+tornado.rank*.2));const rank=Math.min(3,tornado.energy>=78&&score>2800?3:tornado.energy>=52&&score>1100?2:tornado.energy>=28?1:0);if(rank!==tornado.rank&&rank>tornado.rank)toast(`${['','F1 — QUẬY KHU PHỐ!','F2 — BAY MÁI NHÀ!','F3 — ĐẠI NÁO!'][rank]}`);tornado.rank=rank;tornado.radius=30+rank*14+tornado.energy*.09;
+    if(state==='charge'){const remain=Math.max(0,chargeEnds-now);$('chargeCount').textContent=Math.ceil(remain/1000);if(analyser){analyser.getByteFrequencyData(micData);const avg=micData.reduce((a,b)=>a+b,0)/micData.length;if(avg>28)addCharge(Math.min(.9,avg/180));}if(remain<=0)startRun();return;}
+    if(state!=='play')return;const timeLeft=Math.max(0,runEnds-now);if(timeLeft<=0||tornado.energy<=0){finishRun();return;}
+    let sx=0,sy=0;if(keys.KeyW||keys.ArrowUp)sy--;if(keys.KeyS||keys.ArrowDown)sy++;if(keys.KeyA||keys.ArrowLeft)sx--;if(keys.KeyD||keys.ArrowRight)sx++;
+    const target=mouse.down?toWorld(mouse.x,mouse.y):navTarget;if(target&&!sx&&!sy){const p=project(tornado.x,tornado.y),q=project(target.x,target.y),dx=q.x-p.x,dy=q.y-p.y,d=Math.hypot(dx,dy);if(d>16){sx=dx/d;sy=dy/d;}else navTarget=null;}
+    const sl=Math.hypot(sx,sy)||1,speed=132+16*tornado.rank,wx=sx/sl+2*sy/sl,wy=-sx/sl+2*sy/sl,wl=Math.hypot(wx,wy)||1;tornado.vx+=(wx/wl*speed-tornado.vx)*Math.min(1,dt*4.5);tornado.vy+=(wy/wl*speed-tornado.vy)*Math.min(1,dt*4.5);if(!sx&&!sy){tornado.vx*=.9;tornado.vy*=.9;}
+    tornado.x=Math.max(25,Math.min(WORLD_W-25,tornado.x+tornado.vx*dt));tornado.y=Math.max(270,Math.min(WORLD_H-25,tornado.y+tornado.vy*dt));tornado.energy=Math.max(0,tornado.energy-dt*(.34+tornado.rank*.15));
+    const rank=Math.min(3,tornado.energy>=78&&score>2800?3:tornado.energy>=52&&score>1050?2:tornado.energy>=28?1:0);if(rank!==tornado.rank&&rank>tornado.rank)toast(['','F1 — QUẬY KHU PHỐ!','F2 — BAY MÁI NHÀ!','F3 — ĐẠI NÁO!'][rank]);tornado.rank=rank;tornado.radius=52+rank*22+tornado.energy*.14;camera.x+=(tornado.x-camera.x)*Math.min(1,dt*3.4);camera.y+=(tornado.y-camera.y)*Math.min(1,dt*3.4);
+    const b=biomeAt(tornado.x,tornado.y);if(b.name!==currentBiome){currentBiome=b.name;ui.biomeName.textContent=b.name;ui.biomeChip.style.borderColor=b.color;}
     weatherClock+=dt;if(weatherClock>34){weatherClock=0;weather=weather==='clear'?'rain':weather==='rain'?'night':'clear';toast(weather==='rain'?'MƯA LỚN — LỰC HÚT TĂNG!':weather==='night'?'HOÀNG HÔN — XE CHẠY NHANH HƠN!':'TRỜI QUANG TRỞ LẠI');ui.radio.textContent=radios[Math.floor(Math.random()*radios.length)];}
     lightningClock-=dt;if(weather==='rain'&&lightningClock<0){lightningClock=6+Math.random()*7;tornado.energy=Math.min(100,tornado.energy+5);toast('⚡ SÉT NẠP +5 NĂNG LƯỢNG!');tone(75,.3,'sawtooth',.08);}
-    const pull=tornado.radius*(weather==='rain'?1.35:1);
-    objects.forEach(o=>{
-      if(o.caught)return;if(o.type==='storm'){o.phase+=dt;const sd=Math.hypot(o.x-tornado.x,o.y-tornado.y);if(sd<o.r+tornado.radius){tornado.energy=Math.min(100,tornado.energy+dt*5);if(Math.random()<dt*.5)addBubble(o.x,o.y,'+ STORM ENERGY');}return;}
-      if(o.type==='person'||o.type==='car'||o.type==='cow'){o.dir+=(Math.random()-.5)*dt*(o.type==='person'?2:.4);o.x+=Math.cos(o.dir)*(o.speed||8)*dt*(weather==='night'&&o.type==='car'?1.6:1);o.y+=Math.sin(o.dir)*(o.speed||8)*dt;if(o.x<10||o.x>W-10)o.dir=Math.PI-o.dir;if(o.y<10||o.y>H-10)o.dir=-o.dir;}
-      const dx=tornado.x-o.x,dy=tornado.y-o.y,d=Math.hypot(dx,dy)||1;const weight=o.type==='house'?3:o.type==='car'?1.8:o.type==='tree'?1.3:1;const canLift=(o.type==='house'?tornado.rank>=2:o.type==='car'?tornado.rank>=1:true);
-      if(d<pull*2.25){const force=(1-d/(pull*2.25))*105/weight;o.vx+=dx/d*force*dt;o.vy+=dy/d*force*dt;o.spin+=dt*force*.08;if(canLift&&d<pull*.63){if(o.type==='person'){peopleCaught++;collect(o,120,shouts[Math.floor(Math.random()*shouts.length)]);}else if(o.type==='car'){carsCaught++;collect(o,260,'MY CAR!');}else if(o.type==='cow')collect(o,360,'MOOOO?!');else if(o.type==='tree'){collect(o,85,'CRACK!');}else{structuresHit++;collect(o,520,'MY ROOF!');}}
-      }
-      o.x+=o.vx*dt;o.y+=o.vy*dt;o.vx*=.95;o.vy*=.95;
-    });
-    particles.forEach(p=>{p.x+=p.vx*dt;p.y+=p.vy*dt;p.vy+=25*dt;p.life-=dt});particles=particles.filter(p=>p.life>0);bubbles.forEach(b=>{b.y-=18*dt;b.life-=dt});bubbles=bubbles.filter(b=>b.life>0);
-    if(comboTime>0)comboTime-=dt;else combo=Math.max(1,combo-1);
-    missionDefs.forEach(m=>{const val=m.get(),ratio=Math.min(1,val/m.goal),el=$(`m-${m.id}`);el.querySelector('i').style.width=`${ratio*100}%`;if(!m.done&&ratio>=1){m.done=true;missionsDone++;score+=500;el.classList.add('done');ui.missionCount.textContent=`${missionsDone}/3`;toast(`✓ ${m.name.toUpperCase()} +500`);tone(720,.18);}});
-    updateHud(timeLeft);
+    const pull=tornado.radius*(weather==='rain'?1.28:1);objects.forEach(o=>{if(o.caught)return;if(o.type==='storm'){o.phase+=dt;const sd=Math.hypot(o.x-tornado.x,o.y-tornado.y);if(sd<o.r+tornado.radius){tornado.energy=Math.min(100,tornado.energy+dt*4.5);if(Math.random()<dt*.25)addBubble(o.x,o.y,'+ STORM ENERGY');}return;}
+      if(['person','vehicle','cow','dog'].includes(o.type)){o.dir+=(Math.random()-.5)*dt*(o.type==='person'?1.8:.22);o.x+=Math.cos(o.dir)*(o.speed||8)*dt*(weather==='night'&&o.type==='vehicle'?1.35:1);o.y+=Math.sin(o.dir)*(o.speed||8)*dt;if(o.x<20||o.x>WORLD_W-20)o.dir=Math.PI-o.dir;if(o.y<270||o.y>WORLD_H-20)o.dir=-o.dir;}
+      const dx=tornado.x-o.x,dy=tornado.y-o.y,d=Math.hypot(dx,dy)||1,weight=o.type==='building'?3.3:o.type==='vehicle'?1.8:o.type==='tree'?1.25:1,liftRank=o.type==='building'?(o.h>80?3:2):o.type==='vehicle'?1:0;
+      if(d<pull*2.4){const force=(1-d/(pull*2.4))*150/weight;o.vx+=dx/d*force*dt;o.vy+=dy/d*force*dt;o.spin+=dt*force*.06;if(tornado.rank>=liftRank&&d<pull*.7){if(o.type==='person'){peopleCaught++;collect(o,110,shouts[Math.floor(Math.random()*shouts.length)]);}else if(o.type==='vehicle'){carsCaught++;collect(o,o.kind==='bus'?360:240,o.kind==='taxi'?'TAXI BAY!':'MY CAR!');}else if(o.type==='cow')collect(o,350,'MOOOO?!');else if(o.type==='dog')collect(o,180,'WOOF?!');else if(o.type==='tree')collect(o,80,'CRACK!');else{structuresHit++;collect(o,Math.round(420+o.h*2),'MY ROOF!');}}}o.x+=o.vx*dt;o.y+=o.vy*dt;o.vx*=.94;o.vy*=.94;});
+    particles.forEach(p=>{p.x+=p.vx*dt;p.y+=p.vy*dt;p.z+=p.vz*dt;p.vz-=115*dt;p.life-=dt});particles=particles.filter(p=>p.life>0);bubbles.forEach(bu=>bu.life-=dt);bubbles=bubbles.filter(bu=>bu.life>0);if(comboTime>0)comboTime-=dt;else combo=Math.max(1,combo-1);
+    missionDefs.forEach(m=>{const ratio=Math.min(1,m.get()/m.goal),el=$(`m-${m.id}`);el.querySelector('i').style.width=`${ratio*100}%`;if(!m.done&&ratio>=1){m.done=true;missionsDone++;score+=500;el.classList.add('done');ui.missionCount.textContent=`${missionsDone}/3`;toast(`✓ ${m.name.toUpperCase()} +500`);tone(720,.18);}});updateHud(timeLeft);
   }
-  function updateHud(timeLeft){
-    ui.fRank.textContent=`F${tornado.rank}`;ui.fRank.style.color=ranks[tornado.rank].color;ui.rankName.textContent=ranks[tornado.rank].name;ui.energyText.textContent=`${Math.ceil(tornado.energy)}%`;ui.energyBar.style.width=`${tornado.energy}%`;ui.score.textContent=String(score).padStart(6,'0');ui.combo.textContent=`x${combo}`;const s=Math.ceil(timeLeft/1000);ui.timer.textContent=`${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`;ui.weather.textContent=weather==='clear'?'☀ TRỜI QUANG':weather==='rain'?'⚡ MƯA GIÔNG':'☾ HOÀNG HÔN';
-  }
-  function pxRect(x,y,w,h,c){ctx.fillStyle=c;ctx.fillRect(Math.round(x),Math.round(y),Math.round(w),Math.round(h));}
-  function drawGround(){
-    const night=weather==='night';ctx.fillStyle=night?'#27454b':'#5e9b67';ctx.fillRect(0,0,W,H);
-    for(let x=0;x<W;x+=32)for(let y=0;y<H;y+=32){if((x/32+y/32)%3===0)pxRect(x+5,y+8,3,6,night?'#365c55':'#79b56f');}
-    pxRect(0,245,W,84,night?'#3c4751':'#66717b');pxRect(0,280,W,4,'#e9cf5b');for(let x=0;x<W;x+=58)pxRect(x,283,30,4,'#e9cf5b');
-    pxRect(465,0,70,H,night?'#3c4751':'#66717b');pxRect(497,0,4,H,'#e9cf5b');for(let y=0;y<H;y+=58)pxRect(497,y,4,30,'#e9cf5b');
-    if(weather==='rain'){ctx.fillStyle='#80d8ff44';for(let i=0;i<75;i++){const x=(i*83+performance.now()*.18)%W,y=(i*47+performance.now()*.5)%H;ctx.fillRect(x,y,2,9);}}
-  }
-  function drawObject(o){
-    if(o.caught||o.type==='storm')return;ctx.save();ctx.translate(Math.round(o.x),Math.round(o.y));ctx.rotate(o.spin);
-    if(o.type==='house'){pxRect(-o.w/2,-o.h/2,o.w,o.h,o.color);pxRect(-o.w/2-4,-o.h/2-10,o.w+8,14,'#553c45');pxRect(-6,2,13,20,'#573827');pxRect(-20,-3,9,9,'#9ee7f5');}
-    if(o.type==='tree'){pxRect(-3,-5,7,19,'#68462d');pxRect(-13,-20,26,19,'#23633e');pxRect(-8,-27,17,16,'#348151');}
-    if(o.type==='person'){pxRect(-3,-9,7,7,'#f1c27d');pxRect(-4,-2,9,10,o.color);pxRect(-6,8,4,7,'#223047');pxRect(3,8,4,7,'#223047');}
-    if(o.type==='car'){pxRect(-15,-8,30,16,o.color);pxRect(-8,-13,17,7,'#b6edff');pxRect(-11,8,7,4,'#182132');pxRect(6,8,7,4,'#182132');}
-    if(o.type==='cow'){pxRect(-13,-7,26,14,'#f3f1e8');pxRect(-11,-6,7,7,'#27313d');pxRect(4,-5,6,6,'#27313d');pxRect(12,-5,8,9,'#f3f1e8');pxRect(-9,7,3,9,'#3a2c29');pxRect(7,7,3,9,'#3a2c29');}
-    ctx.restore();
-  }
-  function drawStorm(o){ctx.save();ctx.globalAlpha=.42;ctx.fillStyle='#384b6a';ctx.fillRect(o.x-42,o.y-18,84,27);ctx.fillRect(o.x-26,o.y-31,48,27);ctx.fillStyle='#86dcff';ctx.fillRect(o.x-3,o.y+8,7,15);ctx.fillRect(o.x-10,o.y+19,7,10);ctx.restore();}
-  function drawTornado(now){
-    const r=tornado.radius;ctx.save();ctx.translate(Math.round(tornado.x),Math.round(tornado.y));const t=now*.008;ctx.globalAlpha=.26;ctx.fillStyle=ranks[tornado.rank].color;ctx.fillRect(-r*1.8,-r*1.8,r*3.6,r*3.6);ctx.globalAlpha=1;
-    const bands=8+tornado.rank*2;for(let i=0;i<bands;i++){const p=i/(bands-1),width=r*(1.55-p*1.05),y=-r*.95+p*r*1.8,x=Math.sin(t+i*.95)*r*(.22+p*.12);pxRect(x-width/2,y,width,5+(1-p)*4,i%2?'#c9d4dc':'#8295a6');pxRect(x+width*.12,y-3,width*.38,3,'#eef6f7');}
-    pxRect(-5,r*.82,10,12,'#697c8b');ctx.restore();
-  }
-  function draw(now){
-    if(state==='map'||state==='charge'||state==='result'){drawGround();return;}drawGround();objects.filter(o=>o.type==='storm').forEach(drawStorm);objects.filter(o=>o.type==='house'||o.type==='tree').forEach(drawObject);objects.filter(o=>o.type!=='house'&&o.type!=='tree'&&o.type!=='storm').forEach(drawObject);particles.forEach(p=>pxRect(p.x,p.y,p.size,p.size,p.color));drawTornado(now);bubbles.forEach(b=>{ctx.font='bold 13px "Chakra Petch"';const tw=ctx.measureText(b.text).width;ctx.globalAlpha=Math.min(1,b.life*2);pxRect(b.x-tw/2-6,b.y-22,tw+12,21,'#f8fbff');ctx.fillStyle='#111827';ctx.fillText(b.text,b.x-tw/2,b.y-7);ctx.globalAlpha=1;});
-  }
+  function updateHud(timeLeft){ui.fRank.textContent=`F${tornado.rank}`;ui.fRank.style.color=ranks[tornado.rank].color;ui.rankName.textContent=ranks[tornado.rank].name;ui.energyText.textContent=`${Math.ceil(tornado.energy)}%`;ui.energyBar.style.width=`${tornado.energy}%`;ui.score.textContent=String(score).padStart(6,'0');ui.combo.textContent=`x${combo}`;const s=Math.ceil(timeLeft/1000);ui.timer.textContent=`${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`;ui.weather.textContent=weather==='clear'?'☀ TRỜI QUANG':weather==='rain'?'⚡ MƯA GIÔNG':'☾ HOÀNG HÔN';}
+  function drawTerrain(){ctx.fillStyle=weather==='night'?'#142b39':'#83c7df';ctx.fillRect(0,0,W,H);for(let y=0;y<WORLD_H;y+=TILE)for(let x=0;x<WORLD_W;x+=TILE){const t=terrainAt(x+50,y+50),base=biomeInfo[t].color,shade=((x/TILE+y/TILE)%2)?'11':'00';worldQuad(x,y,TILE,TILE,base+shade,'#182d3330');}roads.forEach(r=>{worldQuad(r.x,r.y,r.w,r.d,weather==='night'?'#3e4652':'#59636d','#313b46');if(r.w<r.d){for(let y=r.y+18;y<r.y+r.d;y+=80)worldQuad(r.x+r.w/2-3,y,6,38,'#e8d26b');}else{for(let x=r.x+18;x<r.x+r.w;x+=80)worldQuad(x,r.y+r.d/2-3,38,6,'#e8d26b');}});for(let x=0;x<WORLD_W;x+=150)worldQuad(x,230,85,20,'#d9e3e2');worldQuad(980,205,90,125,'#4b5561');worldQuad(980,205,12,125,'#e9edf0');worldQuad(1058,205,12,125,'#e9edf0');}
+  function shadeColor(hex,amt){let c=hex.replace('#','');if(c.length===3)c=c.split('').map(x=>x+x).join('');const n=parseInt(c,16),r=Math.max(0,Math.min(255,(n>>16)+amt)),g=Math.max(0,Math.min(255,((n>>8)&255)+amt)),b=Math.max(0,Math.min(255,(n&255)+amt));return`rgb(${r},${g},${b})`;}
+  function isoBox(x,y,w,d,h,color){const a=toScreen(x,y),b=toScreen(x+w,y),c=toScreen(x+w,y+d),e=toScreen(x,y+d),at=toScreen(x,y,h),bt=toScreen(x+w,y,h),ct=toScreen(x+w,y+d,h),et=toScreen(x,y+d,h);poly([e,c,ct,et],shadeColor(color,-28));poly([b,c,ct,bt],shadeColor(color,-46));poly([at,bt,ct,et],shadeColor(color,18),'#24323b');}
+  function drawObject(o){if(o.caught)return;const s=toScreen(o.x,o.y),z=camera.zoom;if(o.type==='storm'){ctx.save();ctx.globalAlpha=.45;ctx.fillStyle='#3e526f';ctx.fillRect(s.x-42*z,s.y-25*z,84*z,25*z);ctx.fillRect(s.x-25*z,s.y-39*z,50*z,20*z);ctx.fillStyle='#7be0ff';ctx.fillRect(s.x-4*z,s.y+2*z,8*z,22*z);ctx.restore();return;}if(o.type==='building'){isoBox(o.x-o.w/2,o.y-o.d/2,o.w,o.d,o.h,o.color);if(o.kind==='tower'||o.kind==='apartment'){const top=toScreen(o.x,o.y,o.h+1);ctx.fillStyle='#d9f7ff';for(let i=-2;i<=2;i++)ctx.fillRect(top.x+i*7*z,top.y+4*z,3*z,5*z);}return;}ctx.save();ctx.translate(s.x,s.y);ctx.scale(z,z);ctx.rotate(o.spin);if(o.type==='tree'){ctx.fillStyle='#6d4931';ctx.fillRect(-3,-19,6,20);ctx.fillStyle=o.color;ctx.fillRect(-14,-33,28,18);ctx.fillRect(-9,-41,18,13);}if(o.type==='person'){ctx.fillStyle='#edbd7a';ctx.fillRect(-3,-20,7,7);ctx.fillStyle=o.color;ctx.fillRect(-4,-13,9,11);ctx.fillStyle='#243247';ctx.fillRect(-5,-2,4,7);ctx.fillRect(3,-2,4,7);if(o.role==='tourist'){ctx.fillStyle='#f6d65b';ctx.fillRect(-5,-22,10,3);}}if(o.type==='vehicle'){const big=o.kind==='bus'||o.kind==='truck';ctx.fillStyle='#1b2738';ctx.fillRect(big?-18:-13,-7,big?36:27,16);ctx.fillStyle=o.color;ctx.fillRect(big?-17:-12,-10,big?34:25,14);ctx.fillStyle='#b9ebf5';ctx.fillRect(big?-12:-7,-12,big?20:14,6);if(o.kind==='taxi'){ctx.fillStyle='#222';ctx.fillRect(-3,-16,7,4);}if(o.kind==='ambulance'){ctx.fillStyle='#e55757';ctx.fillRect(-3,-13,6,12);ctx.fillRect(-7,-9,14,4);}}if(o.type==='cow'){ctx.fillStyle=o.color;ctx.fillRect(-13,-10,26,14);ctx.fillStyle='#28333d';ctx.fillRect(-8,-8,6,6);ctx.fillRect(4,-7,5,5);ctx.fillStyle=o.color;ctx.fillRect(11,-8,9,9);}if(o.type==='dog'){ctx.fillStyle=o.color;ctx.fillRect(-8,-8,16,9);ctx.fillRect(6,-13,8,8);ctx.fillRect(-7,1,3,6);ctx.fillRect(5,1,3,6);}ctx.restore();}
+  function drawTornado(now){const s=toScreen(tornado.x,tornado.y),r=tornado.radius*camera.zoom,t=now*.008;ctx.save();ctx.translate(Math.round(s.x),Math.round(s.y));ctx.globalAlpha=.18;ctx.fillStyle=ranks[tornado.rank].color;ctx.fillRect(-r*1.7,-r*1.45,r*3.4,r*2.3);ctx.globalAlpha=1;const bands=9+tornado.rank*2;for(let i=0;i<bands;i++){const p=i/(bands-1),width=r*(1.55-p*1.04),y=-r*1.3+p*r*1.75,x=Math.sin(t+i*.95)*r*(.2+p*.1);ctx.fillStyle=i%2?'#cbd5db':'#788d9e';ctx.fillRect(Math.round(x-width/2),Math.round(y),Math.round(width),Math.max(3,Math.round((7-p*2)*camera.zoom)));ctx.fillStyle='#f1f7f8';ctx.fillRect(Math.round(x+width*.08),Math.round(y-3),Math.round(width*.35),Math.max(2,3*camera.zoom));}ctx.fillStyle='#5e7382';ctx.fillRect(-5*camera.zoom,r*.4,10*camera.zoom,12*camera.zoom);ctx.restore();}
+  function drawRadar(){const rw=radar.width,rh=radar.height;rctx.clearRect(0,0,rw,rh);rctx.fillStyle='#102332';rctx.fillRect(0,0,rw,rh);const sx=rw/WORLD_W,sy=rh/WORLD_H;for(let y=0;y<WORLD_H;y+=100)for(let x=0;x<WORLD_W;x+=100){rctx.fillStyle=biomeInfo[terrainAt(x+50,y+50)].color;rctx.globalAlpha=.65;rctx.fillRect(x*sx,y*sy,100*sx+1,100*sy+1);}rctx.globalAlpha=1;roads.forEach(rd=>{rctx.fillStyle='#5d6570';rctx.fillRect(rd.x*sx,rd.y*sy,Math.max(1,rd.w*sx),Math.max(1,rd.d*sy));});objects.forEach(o=>{if(o.caught)return;if(o.type==='storm'){rctx.fillStyle='#67d8ff';rctx.fillRect(o.x*sx-2,o.y*sy-2,5,5);}else if(o.type==='person'&&terrainAt(o.x,o.y)==='downtown'){rctx.fillStyle='#ff7189';rctx.fillRect(o.x*sx,o.y*sy,2,2);}});if(navTarget){rctx.strokeStyle='#fff';rctx.strokeRect(navTarget.x*sx-3,navTarget.y*sy-3,7,7);}rctx.fillStyle='#ffe34e';rctx.fillRect(tornado.x*sx-3,tornado.y*sy-3,7,7);}
+  function draw(now){if(state!=='play'){ctx.fillStyle='#193848';ctx.fillRect(0,0,W,H);return;}drawTerrain();objects.filter(o=>!o.caught).sort((a,b)=>(a.x+a.y)-(b.x+b.y)).forEach(drawObject);particles.forEach(p=>{const s=toScreen(p.x,p.y,Math.max(0,p.z));ctx.fillStyle=p.color;ctx.fillRect(s.x,s.y,p.size*camera.zoom,p.size*camera.zoom);});drawTornado(now);bubbles.forEach(b=>{const s=toScreen(b.x,b.y,75+(1.5-b.life)*18);ctx.font=`bold ${Math.max(10,13*camera.zoom)}px "Chakra Petch"`;const tw=ctx.measureText(b.text).width;ctx.globalAlpha=Math.min(1,b.life*2);ctx.fillStyle='#f8fbff';ctx.fillRect(s.x-tw/2-6,s.y-19,tw+12,21);ctx.fillStyle='#111827';ctx.fillText(b.text,s.x-tw/2,s.y-5);ctx.globalAlpha=1;});if(weather==='rain'){ctx.fillStyle='#8bdcff66';for(let i=0;i<70;i++){const x=(i*83+now*.18)%W,y=(i*47+now*.5)%H;ctx.fillRect(x,y,2,9);}}if(weather==='night'){ctx.fillStyle='#101a3650';ctx.fillRect(0,0,W,H);}drawRadar();}
   function loop(now){const dt=Math.min(.04,(now-last)/1000);last=now;update(dt,now);draw(now);requestAnimationFrame(loop);}requestAnimationFrame(loop);
-
-  $('startBtn').addEventListener('click',beginCharge);$('generateBtn').addEventListener('pointerdown',()=>addCharge());$('micBtn').addEventListener('click',enableMic);$('retryBtn').addEventListener('click',beginCharge);$('mapBtn').addEventListener('click',()=>{state='map';showScreen('map');});
-  $('soundBtn').addEventListener('click',e=>{audioOn=!audioOn;e.currentTarget.textContent=audioOn?'🔊 ÂM THANH: BẬT':'🔇 ÂM THANH: TẮT';e.currentTarget.setAttribute('aria-pressed',audioOn);});
+  $('startBtn').addEventListener('click',beginCharge);$('generateBtn').addEventListener('pointerdown',()=>addCharge());$('micBtn').addEventListener('click',enableMic);$('retryBtn').addEventListener('click',beginCharge);$('mapBtn').addEventListener('click',()=>{state='map';showGameUi(false);showScreen('map');});$('soundBtn').addEventListener('click',e=>{audioOn=!audioOn;e.currentTarget.textContent=audioOn?'🔊 ÂM THANH: BẬT':'🔇 ÂM THANH: TẮT';e.currentTarget.setAttribute('aria-pressed',audioOn);});
   addEventListener('keydown',e=>{keys[e.code]=true;if(e.code==='Space'&&state==='charge'){e.preventDefault();addCharge();}});addEventListener('keyup',e=>keys[e.code]=false);
-  function mousePos(e){const r=canvas.getBoundingClientRect();mouse.x=(e.clientX-r.left)/r.width*W;mouse.y=(e.clientY-r.top)/r.height*H;}
-  canvas.addEventListener('pointerdown',e=>{mousePos(e);mouse.down=true;canvas.setPointerCapture(e.pointerId)});canvas.addEventListener('pointermove',mousePos);canvas.addEventListener('pointerup',()=>mouse.down=false);canvas.addEventListener('pointercancel',()=>mouse.down=false);
-
-  if(document.modelContext?.registerTool){
-    const safeRegister=(tool)=>{try{Promise.resolve(document.modelContext.registerTool(tool)).catch(()=>{});}catch(e){}}
-    safeRegister({name:'start_windy_creek_run',title:'Bắt đầu Windy Creek',description:'Mở giai đoạn nạp năng lượng 5 giây để bắt đầu một lượt chơi Windy Creek.',inputSchema:{type:'object',properties:{},additionalProperties:false},annotations:{readOnlyHint:false,untrustedContentHint:false},execute:async()=>{if(state==='play')throw new Error('Một lượt chơi đang diễn ra.');beginCharge();return{state:'charging',seconds:5};}});
-    safeRegister({name:'read_pilot_progress',title:'Xem tiến trình pilot',description:'Đọc checkpoint và kỷ lục đã lưu trên trình duyệt cho Tornado Go BRRR.',inputSchema:{type:'object',properties:{},additionalProperties:false},annotations:{readOnlyHint:true,untrustedContentHint:false},execute:async()=>({bestScore:saved.best||0,totalScore:saved.total||0,runs:saved.runs||0,currentState:state})});
-  }
+  function pointerPos(e){const r=canvas.getBoundingClientRect();mouse.x=(e.clientX-r.left)/r.width*W;mouse.y=(e.clientY-r.top)/r.height*H;}
+  canvas.addEventListener('pointerdown',e=>{pointerPos(e);mouse.down=true;navTarget=null;canvas.setPointerCapture(e.pointerId)});canvas.addEventListener('pointermove',pointerPos);canvas.addEventListener('pointerup',()=>mouse.down=false);canvas.addEventListener('pointercancel',()=>mouse.down=false);canvas.addEventListener('wheel',e=>{if(state!=='play')return;e.preventDefault();camera.zoom=Math.max(.52,Math.min(1.18,camera.zoom-e.deltaY*.0007));},{passive:false});
+  radar.addEventListener('pointerdown',e=>{if(state!=='play')return;const r=radar.getBoundingClientRect();navTarget={x:Math.max(20,Math.min(WORLD_W-20,(e.clientX-r.left)/r.width*WORLD_W)),y:Math.max(270,Math.min(WORLD_H-20,(e.clientY-r.top)/r.height*WORLD_H))};toast(`TỰ DI CHUYỂN → ${biomeAt(navTarget.x,navTarget.y).name}`);});
+  if(document.modelContext?.registerTool){const register=tool=>{try{Promise.resolve(document.modelContext.registerTool(tool)).catch(()=>{});}catch(e){}};register({name:'start_stormhaven_run',title:'Bắt đầu Stormhaven',description:'Mở giai đoạn nạp năng lượng 5 giây để bắt đầu một lượt chơi Stormhaven.',inputSchema:{type:'object',properties:{},additionalProperties:false},annotations:{readOnlyHint:false,untrustedContentHint:false},execute:async()=>{if(state==='play')throw new Error('Một lượt chơi đang diễn ra.');beginCharge();return{state:'charging',seconds:5};}});register({name:'read_pilot_progress',title:'Xem tiến trình pilot',description:'Đọc checkpoint và kỷ lục đã lưu trên trình duyệt.',inputSchema:{type:'object',properties:{},additionalProperties:false},annotations:{readOnlyHint:true,untrustedContentHint:false},execute:async()=>({bestScore:saved.best||0,totalScore:saved.total||0,runs:saved.runs||0,currentState:state})});}
 })();

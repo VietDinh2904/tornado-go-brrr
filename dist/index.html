@@ -14,7 +14,7 @@
     <header class="topbar">
       <div class="brand-lockup">
         <div class="mini-vortex" aria-hidden="true"><i></i><i></i><i></i></div>
-        <div><h1>TORNADO GO <span>BRRR!</span></h1><p>PILOT BUILD · WINDY CREEK</p></div>
+        <div><h1>TORNADO GO <span>BRRR!</span></h1><p>PILOT BUILD · STORMHAVEN</p></div>
       </div>
       <div class="save-chip"><span></span> CHECKPOINT <b id="checkpointLabel">CHƯA CÓ</b></div>
     </header>
@@ -38,18 +38,18 @@
           <div class="world-panel">
             <div class="eyebrow">CHỌN ĐIỂM ĐÁP</div>
             <h2>WORLD CHAOS TOUR</h2>
-            <p class="world-copy">Mỗi khu vực có thời tiết, vật thể và kiểu tornado riêng.</p>
+            <p class="world-copy">Mỗi khu vực có địa hình, cư dân, giao thông và kiểu thời tiết riêng.</p>
             <div class="world-map" aria-label="Bản đồ thế giới">
-              <button class="region active-region" id="windyRegion"><span class="pin">★</span><b>WINDY CREEK</b><small>Tornado Alley · ĐÃ MỞ</small></button>
+              <button class="region active-region" id="windyRegion"><span class="pin">★</span><b>STORMHAVEN</b><small>Đại đô thị · ĐÃ MỞ</small></button>
               <button class="region locked r-japan" disabled><span>🔒</span><b>NEON BAY</b><small>Nhật Bản · 12,000 điểm</small></button>
               <button class="region locked r-sahara" disabled><span>🔒</span><b>DUST KINGDOM</b><small>Sahara · Hoàn thành 5 nhiệm vụ</small></button>
               <button class="region locked r-vietnam" disabled><span>🔒</span><b>MEKONG MAYHEM</b><small>Việt Nam · Sắp có</small></button>
               <div class="continent c1"></div><div class="continent c2"></div><div class="continent c3"></div><div class="continent c4"></div><div class="continent c5"></div>
             </div>
             <div class="loadout">
-              <div><span>TORNADO</span><b>CLASSIC FUNNEL</b><small>Cân bằng · F0 → F3</small></div>
+              <div><span>TORNADO</span><b>CLASSIC FUNNEL</b><small>Khởi đầu dễ · F0 → F3</small></div>
               <div class="weather-icons"><span>THỜI TIẾT</span><b>☀ ☁ ⚡</b><small>Thay đổi trong màn</small></div>
-              <button class="primary" id="startBtn">VÀO WINDY CREEK</button>
+              <button class="primary" id="startBtn">VÀO STORMHAVEN</button>
             </div>
           </div>
         </div>
@@ -79,6 +79,12 @@
 
         <div class="toast" id="toast"></div>
         <div class="control-hint" id="controlHint"><b>WASD</b> DI CHUYỂN <span>•</span> <b>CHUỘT</b> DẪN HƯỚNG</div>
+        <div class="biome-chip" id="biomeChip"><span>📍</span><div><small>KHU VỰC</small><b id="biomeName">TRUNG TÂM</b></div></div>
+        <div class="radar-wrap" id="radarWrap">
+          <div class="radar-title"><b>RADAR THÀNH PHỐ</b><span>CLICK ĐỂ TỰ DI CHUYỂN</span></div>
+          <canvas id="radar" width="220" height="150" aria-label="Radar bản đồ Stormhaven"></canvas>
+          <div class="radar-legend"><span><i class="you"></i> BẠN</span><span><i class="storm"></i> BÃO</span><span><i class="target"></i> ĐÔNG DÂN</span></div>
+        </div>
       </div>
 
       <aside class="mission-panel">
